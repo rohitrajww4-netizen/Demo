@@ -1,0 +1,62 @@
+DECLARE @AccountNumber BIGINT = 100506039;
+DECLARE @EffectiveDate DATETIME = '2026-10-19';
+
+;WITH SecType AS
+(
+    SELECT DISTINCT
+        s.SsiId,
+        s.CountryId,
+        s.MethodId,
+        st.ShortName
+    FROM SSI s
+    INNER JOIN SsiSecurityType ssist
+        ON ssist.SsiId = s.SsiId
+    INNER JOIN SecurityType st
+        ON st.SecurityTypeId = ssist.SecurityTypeId
+    WHERE s.SsiId IN (966, 970, 10269)
+),
+RankedSSI AS
+(
+    SELECT
+        sa.AccountNumber,
+        s.SsiId,
+        s.CountryId,
+        s.MethodId,
+        st.ShortName,
+        s.EffectiveDate,
+        DENSE_RANK() OVER
+        (
+            PARTITION BY
+                sa.AccountNumber,
+                s.CountryId,
+                s.MethodId,
+                st.ShortName
+            ORDER BY
+                CONVERT(DATE, s.EffectiveDate, 101) DESC
+        ) AS RowNumber
+    FROM SSI s
+    INNER JOIN SsiSmtbAccount sa
+        ON sa.SsiId = s.SsiId
+    INNER JOIN SecType st
+        ON st.SsiId = s.SsiId
+    WHERE sa.AccountNumber = @AccountNumber
+      AND CONVERT(DATE, s.EffectiveDate, 101)
+          <= CONVERT(DATE, @EffectiveDate, 101)
+)
+SELECT
+    AccountNumber,
+    SsiId,
+    CountryId,
+    MethodId,
+    ShortName AS SecurityType,
+    EffectiveDate,
+    RowNumber,
+    CASE
+        WHEN RowNumber = 1 THEN 'SELECTED'
+        ELSE 'NOT SELECTED'
+    END AS SelectionStatus
+FROM RankedSSI
+ORDER BY
+    ShortName,
+    RowNumber,
+    SsiId;
